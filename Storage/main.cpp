@@ -6,7 +6,7 @@
 
 using namespace std;
 
-// --- DATA STRUCTURES & GLOBAL DEFINITIONS (FOR .h FILE) ---
+// --- DATA STRUCTURES & GLOBAL DEFINITIONS ---
 
 const int MAIN_MENU_ITEMS = 8;
 
@@ -19,7 +19,6 @@ struct Product {
 	string expirationDate;
 };
 
-// Global data storage definitions
 Product** warehouse = nullptr;
 int productCount = 0;
 int warehouseCapacity = 0;
@@ -557,7 +556,7 @@ void mainMenu() {
 	string menuOptions[] = {
 		"1. Add Product",
 		"2. Remove Product",
-		"3. Replace Product",
+		"3. Swap Product",
 		"4. Search Product",
 		"5. Sort by Price",
 		"6. Sort by Group",
