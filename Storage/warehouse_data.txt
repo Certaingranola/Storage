@@ -1,0 +1,11 @@
+Potatoes;AgroUkraine;4.800000;Food;2025-09-15;2027-08-10  
+Carrots;RootHarvest;5.300000;Food;2025-11-10;2027-10-05  
+Tomatoes;GreenFarm;6.200000;Food;2025-10-20;2027-09-25  
+Bread;BakeHouse;7.000000;Food;2025-10-25;2025-11-10  
+Bananas;TropiFruits;8.500000;Food;2025-11-01;2027-10-15  
+Eggs;FarmNest;9.000000;Food;2025-10-18;2025-11-05  
+Oranges;CitrusWorld;9.750000;Food;2025-12-05;2027-11-30  
+Apples;AppleFactory;10.000000;Food;2025-12-12;2027-11-20
+Tomatoes;TomatoFactory;10.000000;Food;2000-12-20;2027-12-23
+Milk;DairyFresh;12.000000;Food;2025-12-01;2026-01-01  
+Cheese;GoldenCow;15.500000;Food;2025-11-20;2026-02-28  

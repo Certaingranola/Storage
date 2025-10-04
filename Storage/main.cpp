@@ -1,316 +1,618 @@
-ï»¿#include <iostream>
-#include <cstring>
-#include <conio.h>
-#include <windows.h>
+#include <iostream>
+#include <string>
+#include <windows.h> 
+#include <conio.h>   
+#include <fstream>
 
 using namespace std;
 
-// ========== ENUMS ==========
-enum Colors {
-    BLACK = 0, DARK_BLUE = 1, DARK_GREEN = 2, DARK_CYAN = 3,
-    DARK_RED = 4, DARK_MAGENTA = 5, DARK_YELLOW = 6, GREY = 7,
-    DARK_GREY = 8, BLUE = 9, GREEN = 10, CYAN = 11,
-    RED = 12, MAGENTA = 13, YELLOW = 14, WHITE = 15
-};
+// --- DATA STRUCTURES & GLOBAL DEFINITIONS (FOR .h FILE) ---
 
-// ========== UTILITY ==========
-void setConsoleColor(Colors textColor, Colors bgColor) {
-    HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
-    SetConsoleTextAttribute(hConsole, (bgColor << 4) | textColor);
-}
+const int MAIN_MENU_ITEMS = 8;
 
-// Product structure to store product details.
 struct Product {
-    char name[50];
-    char manufacturer[50];
-    double price;
-    char category[30];
-    char arrivalDate[11];
-    char expirationDate[11];
+	string name;
+	string manufacturer;
+	double price;
+	string group;
+	string arrivalDate;
+	string expirationDate;
 };
 
-// Pointer for the dynamic array and variables for size tracking.
-Product* warehouse = nullptr;
+// Global data storage definitions
+Product** warehouse = nullptr;
 int productCount = 0;
 int warehouseCapacity = 0;
+const string FILENAME = "warehouse_data.txt";
 
-// Function to resize the dynamic array.
+
+// --- UTILITY / CONSOLE FUNCTIONS ---
+
+void gotoXY(int x, int y) {
+	COORD coord;
+	coord.X = x;
+	coord.Y = y;
+	SetConsoleCursorPosition(GetStdHandle(STD_OUTPUT_HANDLE), coord);
+}
+
+void clearScreen() {
+	system("cls");
+}
+
+int handleMenuNavigation(int currentSelection, int maxItems) {
+	int key = _getch();
+
+	if (key == 13) {
+		return -1;
+	}
+
+	if (key == 0 || key == 224) {
+		key = _getch();
+		if (key == 72) {
+			currentSelection--;
+		}
+		else if (key == 80) {
+			currentSelection++;
+		}
+		else {
+			return currentSelection;
+		}
+	}
+	else {
+		return currentSelection;
+	}
+
+	if (currentSelection < 0) {
+		currentSelection = maxItems - 1;
+	}
+	else if (currentSelection >= maxItems) {
+		currentSelection = 0;
+	}
+
+	return currentSelection;
+}
+
+// --- UTILITY / DYNAMIC ARRAY MANAGEMENT ---
+
 void resizeWarehouse(int newCapacity) {
-    Product* newWarehouse = new Product[newCapacity];
-    for (int i = 0; i < productCount; ++i) {
-        newWarehouse[i] = warehouse[i];
-    }
-    delete[] warehouse;
-    warehouse = newWarehouse;
-    warehouseCapacity = newCapacity;
+	if (newCapacity == 0) {
+		newCapacity = (warehouseCapacity == 0) ? 10 : warehouseCapacity * 2;
+	}
+
+	Product** newWarehouse = new Product * [newCapacity];
+
+	for (int i = 0; i < newCapacity; ++i) {
+		newWarehouse[i] = NULL;
+	}
+
+	for (int i = 0; i < warehouseCapacity; ++i) {
+		newWarehouse[i] = warehouse[i];
+	}
+
+	if (warehouse != nullptr) {
+		delete[] warehouse;
+	}
+
+	warehouse = newWarehouse;
+	warehouseCapacity = newCapacity;
 }
 
-// Add a product to the dynamic array.
-void addProduct(const Product& p) {
-    if (productCount == warehouseCapacity) {
-        if (warehouseCapacity == 0) {
-            resizeWarehouse(1);
-        }
-        else {
-            resizeWarehouse(warehouseCapacity * 2);
-        }
-    }
-    warehouse[productCount++] = p;
-    cout << "Product added.\n";
+void initializeWarehouse() {
+	if (warehouseCapacity == 0) {
+		resizeWarehouse(10);
+	}
 }
 
-// Remove a product by name.
-void removeProduct(const char* name) {
-    for (int i = 0; i < productCount; ++i) {
-        if (strcmp(warehouse[i].name, name) == 0) {
-            for (int j = i; j < productCount - 1; ++j)
-                warehouse[j] = warehouse[j + 1];
-            --productCount;
-            cout << "Product removed.\n";
-            return;
-        }
-    }
-    cout << "Product not found.\n";
+void cleanupWarehouse() {
+	if (warehouse != nullptr) {
+		for (int i = 0; i < warehouseCapacity; ++i) {
+			if (warehouse[i] != NULL) {
+				delete warehouse[i];
+			}
+		}
+		delete[] warehouse;
+		warehouse = nullptr;
+	}
+	warehouseCapacity = 0;
+	productCount = 0;
 }
 
-// Replace a product by name.
-void replaceProduct(const char* name, const Product& newProduct) {
-    for (int i = 0; i < productCount; ++i) {
-        if (strcmp(warehouse[i].name, name) == 0) {
-            warehouse[i] = newProduct;
-            cout << "Product replaced.\n";
-            return;
-        }
-    }
-    cout << "Product not found.\n";
+
+// --- UTILITY / FILE OPERATIONS ---
+
+string productToString(const Product* p) {
+	if (p == NULL) return "";
+	return p->name + ";" + p->manufacturer + ";" + to_string(p->price) + ";" + p->group + ";" + p->arrivalDate + ";" + p->expirationDate;
 }
 
-// Function to display all products in the warehouse.
+Product* stringToProduct(const string& data) {
+	Product* p = new Product;
+	size_t pos = 0;
+	size_t nextPos;
+	string token;
+
+	for (int i = 0; i < 6; ++i) {
+		nextPos = data.find(';', pos);
+		if (nextPos == string::npos) nextPos = data.length();
+		token = data.substr(pos, nextPos - pos);
+		pos = nextPos + 1;
+
+		switch (i) {
+		case 0: p->name = token; break;
+		case 1: p->manufacturer = token; break;
+		case 2:
+			try {
+				p->price = stod(token);
+			}
+			catch (...) {
+				p->price = 0.0;
+			}
+			break;
+		case 3: p->group = token; break;
+		case 4: p->arrivalDate = token; break;
+		case 5: p->expirationDate = token; break;
+		}
+	}
+	return p;
+}
+
+void saveToFile() {
+	ofstream outFile(FILENAME);
+	if (outFile.is_open()) {
+		int savedCount = 0;
+		for (int i = 0; i < warehouseCapacity; ++i) {
+			if (warehouse[i] != NULL) {
+				outFile << productToString(warehouse[i]) << endl;
+				savedCount++;
+			}
+		}
+		outFile.close();
+		cout << "\nData saved successfully to " << FILENAME << ". Total items saved: " << savedCount << endl;
+	}
+	else {
+		cout << "\nUnable to open file for saving!" << endl;
+	}
+	cout << "\nPress any key to continue...";
+	_getch();
+}
+
+void loadFromFile() {
+	ifstream inFile(FILENAME);
+
+	cleanupWarehouse();
+	initializeWarehouse();
+
+	if (inFile.is_open()) {
+		string line;
+		int i = 0;
+		while (getline(inFile, line)) {
+			if (!line.empty()) {
+				if (i >= warehouseCapacity) {
+					resizeWarehouse(0);
+				}
+
+				warehouse[i] = stringToProduct(line);
+				productCount++;
+				i++;
+			}
+		}
+		inFile.close();
+		cout << "\nData loaded successfully from " << FILENAME << ". Total items: " << productCount << endl;
+	}
+	else {
+		cout << "\nFile " << FILENAME << " not found or unable to open. Starting with empty warehouse." << endl;
+	}
+	cout << "\nPress any key to continue...";
+	_getch();
+}
+
+// --- WAREHOUSE FUNCTIONS / CRUD & DISPLAY ---
+
+void displayProduct(const Product* p, int index) {
+	if (p == NULL) return;
+	cout << "Index: " << index << "\n";
+	cout << "  Name:          " << p->name << "\n";
+	cout << "  Manufacturer:  " << p->manufacturer << "\n";
+	cout << "  Price:         " << p->price << "\n";
+	cout << "  Group:         " << p->group << "\n";
+	cout << "  Arrival Date:  " << p->arrivalDate << "\n";
+	cout << "  Expiration Date: " << p->expirationDate << "\n";
+	cout << "-----------------------------------\n";
+}
+
+void addProduct() {
+	clearScreen();
+	cout << "--- Add New Product ---\n";
+
+	if (productCount >= warehouseCapacity) {
+		resizeWarehouse(0);
+		cout << "Warehouse capacity doubled to " << warehouseCapacity << " to accommodate new items.\n";
+	}
+
+	int index = -1;
+	for (int i = 0; i < warehouseCapacity; ++i) {
+		if (warehouse[i] == NULL) {
+			index = i;
+			break;
+		}
+	}
+
+	Product* newP = new Product;
+
+	cout << "Enter Product Name: ";
+	getline(cin >> ws, newP->name);
+	cout << "Enter Manufacturer: ";
+	getline(cin >> ws, newP->manufacturer);
+	cout << "Enter Price: ";
+	while (!(cin >> newP->price) || newP->price < 0) {
+		cout << "Invalid price. Enter Price: ";
+		cin.clear();
+		cin.ignore(10000, '\n');
+	}
+	cout << "Enter Group (e.g., 'Water', 'Canned Food'): ";
+	getline(cin >> ws, newP->group);
+	cout << "Enter Arrival Date (YYYY-MM-DD): ";
+	getline(cin >> ws, newP->arrivalDate);
+	cout << "Enter Expiration Date (YYYY-MM-DD): ";
+	getline(cin >> ws, newP->expirationDate);
+
+	warehouse[index] = newP;
+	productCount++;
+
+	cout << "\nProduct added successfully at index " << index << "!\n";
+	cout << "\nPress any key to continue...";
+	_getch();
+}
+
+void removeProduct() {
+	clearScreen();
+	cout << "--- Remove Product ---\n";
+	if (productCount == 0) {
+		cout << "Warehouse is empty!\n";
+		cout << "\nPress any key to continue...";
+		_getch();
+		return;
+	}
+
+	int index;
+	cout << "Enter Index of product to remove (0 to " << warehouseCapacity - 1 << "): ";
+	while (!(cin >> index) || index < 0 || index >= warehouseCapacity || warehouse[index] == NULL) {
+		cout << "Invalid index or product slot is empty. Enter valid index: ";
+		cin.clear();
+		cin.ignore(10000, '\n');
+	}
+
+	delete warehouse[index];
+	warehouse[index] = NULL;
+	productCount--;
+
+	cout << "\nProduct at index " << index << " removed successfully.\n";
+	cout << "\nPress any key to continue...";
+	_getch();
+}
+
+void replaceProduct() {
+	clearScreen();
+	cout << "--- Replace Product ---\n";
+	if (productCount == 0) {
+		cout << "Warehouse is empty!\n";
+		cout << "\nPress any key to continue...";
+		_getch();
+		return;
+	}
+
+	int index;
+	cout << "Enter Index of product to replace (0 to " << warehouseCapacity - 1 << "): ";
+	while (!(cin >> index) || index < 0 || index >= warehouseCapacity || warehouse[index] == NULL) {
+		cout << "Invalid index or product slot is empty. Enter valid index: ";
+		cin.clear();
+		cin.ignore(10000, '\n');
+	}
+
+	cout << "\nCurrently replacing:\n";
+	displayProduct(warehouse[index], index);
+
+	delete warehouse[index];
+
+	cout << "--- Enter NEW Product Data ---\n";
+
+	Product* newP = new Product;
+
+	cout << "Enter NEW Product Name: ";
+	getline(cin >> ws, newP->name);
+	cout << "Enter NEW Manufacturer: ";
+	getline(cin >> ws, newP->manufacturer);
+	cout << "Enter NEW Price: ";
+	while (!(cin >> newP->price) || newP->price < 0) {
+		cout << "Invalid price. Enter NEW Price: ";
+		cin.clear();
+		cin.ignore(10000, '\n');
+	}
+	cout << "Enter NEW Group: ";
+	getline(cin >> ws, newP->group);
+	cout << "Enter NEW Arrival Date (YYYY-MM-DD): ";
+	getline(cin >> ws, newP->arrivalDate);
+	cout << "Enter NEW Expiration Date (YYYY-MM-DD): ";
+	getline(cin >> ws, newP->expirationDate);
+
+	warehouse[index] = newP;
+
+	cout << "\nProduct at index " << index << " replaced successfully.\n";
+	cout << "\nPress any key to continue...";
+	_getch();
+}
+
 void displayAllProducts() {
-    if (productCount == 0) {
-        cout << "Warehouse is empty.\n";
-        return;
-    }
-    cout << "\n------ WAREHOUSE INVENTORY ------\n";
-    for (int i = 0; i < productCount; ++i) {
-        cout << "---------------------------------\n";
-        cout << "Name: " << warehouse[i].name << endl;
-        cout << "Manufacturer: " << warehouse[i].manufacturer << endl;
-        cout << "Price: " << warehouse[i].price << " UAH" << endl;
-        cout << "Category: " << warehouse[i].category << endl;
-        cout << "Arrival Date: " << warehouse[i].arrivalDate << endl;
-        cout << "Expiration Date: " << warehouse[i].expirationDate << endl;
-    }
-    cout << "---------------------------------\n";
+	clearScreen();
+	cout << "--- All Products in Warehouse (" << productCount << " items) ---\n";
+
+	if (productCount == 0) {
+		cout << "Warehouse is currently empty.\n";
+	}
+	else {
+		for (int i = 0; i < warehouseCapacity; ++i) {
+			if (warehouse[i] != NULL) {
+				displayProduct(warehouse[i], i);
+			}
+		}
+	}
+	cout << "\nPress any key to continue...";
+	_getch();
 }
 
-// Search for a product by name.
-void searchByName(const char* name) {
-    for (int i = 0; i < productCount; ++i)
-        if (strcmp(warehouse[i].name, name) == 0)
-            cout << warehouse[i].name << " | " << warehouse[i].price << " UAH\n";
+
+// --- WAREHOUSE FUNCTIONS / SEARCH & SORT ---
+
+void searchProductMenu() {
+	clearScreen();
+	cout << "--- Search Product ---\n";
+	if (productCount == 0) {
+		cout << "Warehouse is empty! No search possible.\n";
+		cout << "\nPress any key to continue...";
+		_getch();
+		return;
+	}
+
+	int searchType = 0;
+	string searchOptions[] = {
+		"1. By Name",
+		"2. By Manufacturer",
+		"3. By Price",
+		"4. By Group",
+		"5. By Arrival Date",
+		"6. By Expiration Date",
+		"7. Back to Main Menu"
+	};
+	const int SEARCH_MENU_ITEMS = 7;
+	int keyResult;
+
+	while (true) {
+		clearScreen();
+		cout << "--- Select Search Criterion (Use Arrows, then Enter) ---\n";
+		for (int i = 0; i < SEARCH_MENU_ITEMS; ++i) {
+			gotoXY(2, 2 + i);
+			if (i == searchType) {
+				cout << "-> \x1b[33m" << searchOptions[i] << "\x1b[0m";
+			}
+			else {
+				cout << "   " << searchOptions[i] << "   ";
+			}
+		}
+
+		keyResult = handleMenuNavigation(searchType, SEARCH_MENU_ITEMS);
+		if (keyResult == -1) {
+			if (searchType == SEARCH_MENU_ITEMS - 1) return;
+			break;
+		}
+		searchType = keyResult;
+	}
+
+	string term;
+	double priceTerm;
+	bool found = false;
+
+	clearScreen();
+	cout << "--- Search Results ---\n";
+
+	if (searchType == 2) {
+		cout << "Enter search price: ";
+		while (!(cin >> priceTerm) || priceTerm < 0) {
+			cout << "Invalid price. Enter search price: ";
+			cin.clear();
+			cin.ignore(10000, '\n');
+		}
+	}
+	else {
+		cout << "Enter search term for " << searchOptions[searchType] << ": ";
+		getline(cin >> ws, term);
+	}
+
+
+	for (int i = 0; i < warehouseCapacity; ++i) {
+		if (warehouse[i] == NULL) continue;
+
+		bool match = false;
+		switch (searchType) {
+		case 0:
+			if (warehouse[i]->name.find(term) != string::npos) match = true;
+			break;
+		case 1:
+			if (warehouse[i]->manufacturer.find(term) != string::npos) match = true;
+			break;
+		case 2:
+			if (warehouse[i]->price == priceTerm) match = true;
+			break;
+		case 3:
+			if (warehouse[i]->group.find(term) != string::npos) match = true;
+			break;
+		case 4:
+			if (warehouse[i]->arrivalDate == term) match = true;
+			break;
+		case 5:
+			if (warehouse[i]->expirationDate == term) match = true;
+			break;
+		}
+
+		if (match) {
+			displayProduct(warehouse[i], i);
+			found = true;
+		}
+	}
+
+	if (!found) {
+		cout << "No products found matching the criteria.\n";
+	}
+
+	cout << "\nPress any key to continue...";
+	_getch();
 }
 
-// Search for a product by manufacturer.
-void searchByManufacturer(const char* manufacturer) {
-    for (int i = 0; i < productCount; ++i)
-        if (strcmp(warehouse[i].manufacturer, manufacturer) == 0)
-            cout << warehouse[i].name << " | " << warehouse[i].manufacturer << "\n";
+void swapProductPointers(Product*& a, Product*& b) {
+	Product* temp = a;
+	a = b;
+	b = temp;
 }
 
-// Search for products by maximum price.
-void searchByPrice(double maxPrice) {
-    for (int i = 0; i < productCount; ++i)
-        if (warehouse[i].price <= maxPrice)
-            cout << warehouse[i].name << " | " << warehouse[i].price << " UAH\n";
-}
-
-// Search for products by category.
-void searchByCategory(const char* category) {
-    for (int i = 0; i < productCount; ++i)
-        if (strcmp(warehouse[i].category, category) == 0)
-            cout << warehouse[i].name << " | " << warehouse[i].category << "\n";
-}
-
-// Search for products by arrival date.
-void searchByArrivalDate(const char* date) {
-    for (int i = 0; i < productCount; ++i)
-        if (strcmp(warehouse[i].arrivalDate, date) == 0)
-            cout << warehouse[i].name << " | " << warehouse[i].arrivalDate << "\n";
-}
-
-// Search for products by expiration date.
-void searchByExpirationDate(const char* date) {
-    for (int i = 0; i < productCount; ++i)
-        if (strcmp(warehouse[i].expirationDate, date) == 0)
-            cout << warehouse[i].name << " | " << warehouse[i].expirationDate << "\n";
-}
-
-// Sort products by price using bubble sort.
 void sortByPrice() {
-    for (int i = 0; i < productCount - 1; ++i)
-        for (int j = i + 1; j < productCount; ++j)
-            if (warehouse[i].price > warehouse[j].price) {
-                Product temp = warehouse[i];
-                warehouse[i] = warehouse[j];
-                warehouse[j] = temp;
-            }
+	if (productCount <= 1) {
+		clearScreen();
+		cout << "Not enough items to sort.\n";
+		cout << "\nPress any key to continue...";
+		_getch();
+		return;
+	}
+
+	for (int i = 0; i < warehouseCapacity - 1; ++i) {
+		for (int j = 0; j < warehouseCapacity - 1 - i; ++j) {
+
+			if (warehouse[j] != NULL && warehouse[j + 1] != NULL) {
+				if (warehouse[j]->price > warehouse[j + 1]->price) {
+					swapProductPointers(warehouse[j], warehouse[j + 1]);
+				}
+			}
+			else if (warehouse[j] == NULL && warehouse[j + 1] != NULL) {
+				swapProductPointers(warehouse[j], warehouse[j + 1]);
+			}
+		}
+	}
+
+	clearScreen();
+	cout << "--- Products Sorted by Price (Ascending) ---\n";
+
+	for (int i = 0; i < productCount; ++i) {
+		if (warehouse[i] != NULL) {
+			displayProduct(warehouse[i], i);
+		}
+	}
+
+	cout << "\nPress any key to continue...";
+	_getch();
 }
 
-// Sort products by category using bubble sort.
-void sortByCategory() {
-    for (int i = 0; i < productCount - 1; ++i)
-        for (int j = i + 1; j < productCount; ++j)
-            if (strcmp(warehouse[i].category, warehouse[j].category) > 0) {
-                Product temp = warehouse[i];
-                warehouse[i] = warehouse[j];
-                warehouse[j] = temp;
-            }
+void sortByGroup() {
+	if (productCount <= 1) {
+		clearScreen();
+		cout << "Not enough items to sort.\n";
+		cout << "\nPress any key to continue...";
+		_getch();
+		return;
+	}
+
+	for (int i = 0; i < warehouseCapacity - 1; ++i) {
+		for (int j = 0; j < warehouseCapacity - 1 - i; ++j) {
+
+			if (warehouse[j] != NULL && warehouse[j + 1] != NULL) {
+				if (warehouse[j]->group > warehouse[j + 1]->group) {
+					swapProductPointers(warehouse[j], warehouse[j + 1]);
+				}
+			}
+			else if (warehouse[j] == NULL && warehouse[j + 1] != NULL) {
+				swapProductPointers(warehouse[j], warehouse[j + 1]);
+			}
+		}
+	}
+
+	clearScreen();
+	cout << "--- Products Sorted by Group (Alphabetical) ---\n";
+
+	for (int i = 0; i < productCount; ++i) {
+		if (warehouse[i] != NULL) {
+			displayProduct(warehouse[i], i);
+		}
+	}
+
+	cout << "\nPress any key to continue...";
+	_getch();
 }
 
-// ========== MENU ==========
-int showMenu(const string items[], int itemCount, Colors activeText, Colors activeBg, Colors normalText, Colors normalBg) {
-    int selected = 0;
-    const int ENTER = 13;
-    const int ESCAPE = 27;
-    const int UP = 72;
-    const int DOWN = 80;
 
-    while (true) {
-        system("cls");
-        cout << "\n------ WAREHOUSE MENU ------\n";
-        for (int i = 0; i < itemCount; ++i) {
-            if (i == selected) {
-                setConsoleColor(activeText, activeBg);
-                cout << " > " << items[i];
-            }
-            else {
-                setConsoleColor(normalText, normalBg);
-                cout << "   " << items[i];
-            }
-            setConsoleColor(WHITE, BLACK);
-            cout << endl;
-        }
+// --- MAIN MENU LOGIC ---
 
-        int key = _getch();
-        if (key == 0 || key == 224) {
-            key = _getch();
-            if (key == UP) {
-                selected = (selected == 0) ? itemCount - 1 : selected - 1;
-            }
-            else if (key == DOWN) {
-                selected = (selected == itemCount - 1) ? 0 : selected + 1;
-            }
-        }
-        else if (key == ENTER) {
-            return selected;
-        }
-        else if (key == ESCAPE) {
-            return -1;
-        }
-    }
+void mainMenu() {
+	initializeWarehouse();
+	loadFromFile();
+
+	int selection = 0;
+	int keyResult;
+	string menuOptions[] = {
+		"1. Add Product",
+		"2. Remove Product",
+		"3. Replace Product",
+		"4. Search Product",
+		"5. Sort by Price",
+		"6. Sort by Group",
+		"7. View All Products",
+		"8. Save & Exit"
+	};
+
+	while (true) {
+		clearScreen();
+		cout << "======================================\n";
+		cout << "       WAREHOUSE MANAGEMENT SYSTEM\n";
+		cout << "======================================\n\n";
+
+		for (int i = 0; i < MAIN_MENU_ITEMS; ++i) {
+			gotoXY(2, 5 + i);
+			if (i == selection) {
+				cout << "-> \x1b[33;1m" << menuOptions[i] << "\x1b[0m";
+			}
+			else {
+				cout << "   " << menuOptions[i] << "   ";
+			}
+		}
+
+		keyResult = handleMenuNavigation(selection, MAIN_MENU_ITEMS);
+
+		if (keyResult == -1) {
+			switch (selection) {
+			case 0: addProduct(); break;
+			case 1: removeProduct(); break;
+			case 2: replaceProduct(); break;
+			case 3: searchProductMenu(); break;
+			case 4: sortByPrice(); break;
+			case 5: sortByGroup(); break;
+			case 6: displayAllProducts(); break;
+			case 7:
+				saveToFile();
+				cleanupWarehouse();
+				clearScreen();
+				cout << "Thank you for using the Warehouse System. Goodbye!\n";
+				return;
+			}
+		}
+		else {
+			selection = keyResult;
+		}
+	}
 }
 
-// ========== MAIN ==========
+// --- MAIN FUNCTION ---
+
 int main() {
-    const int itemCount = 13;
-    string mainMenu[itemCount] = {
-        "Add product",
-        "Remove product",
-        "Replace product",
-        "Search by name",
-        "Search by manufacturer",
-        "Search by price",
-        "Search by category",
-        "Search by arrival date",
-        "Search by expiration date",
-        "Sort by price",
-        "Sort by category",
-        "Display all products",
-        "Exit"
-    };
+	SetConsoleOutputCP(1251);
+	SetConsoleCP(1251);
 
-    while (true) {
-        int choice = showMenu(mainMenu, itemCount, BLACK, YELLOW, WHITE, BLACK);
+	mainMenu();
 
-        if (choice == -1 || choice == 12) {
-            cout << "Exiting program.\n";
-            delete[] warehouse;
-            return 0;
-        }
-
-        system("cls");
-        cout << "You selected: " << mainMenu[choice] << endl;
-
-        Product temp;
-        char buffer[50];
-        double price;
-
-        switch (choice) {
-        case 0:
-            cout << "Name: "; cin.getline(temp.name, 50);
-            cout << "Manufacturer: "; cin.getline(temp.manufacturer, 50);
-            cout << "Price: "; cin >> temp.price; cin.ignore();
-            cout << "Category: "; cin.getline(temp.category, 30);
-            cout << "Arrival date (YYYY-MM-DD): "; cin.getline(temp.arrivalDate, 11);
-            cout << "Expiration date (YYYY-MM-DD): "; cin.getline(temp.expirationDate, 11);
-            addProduct(temp);
-            break;
-        case 1:
-            cout << "Enter product name to remove: "; cin.getline(buffer, 50);
-            removeProduct(buffer);
-            break;
-        case 2:
-            cout << "Enter product name to replace: "; cin.getline(buffer, 50);
-            cout << "New product data:\n";
-            cout << "Name: "; cin.getline(temp.name, 50);
-            cout << "Manufacturer: "; cin.getline(temp.manufacturer, 50);
-            cout << "Price: "; cin >> temp.price; cin.ignore();
-            cout << "Category: "; cin.getline(temp.category, 30);
-            cout << "Arrival date: "; cin.getline(temp.arrivalDate, 11);
-            cout << "Expiration date: "; cin.getline(temp.expirationDate, 11);
-            replaceProduct(buffer, temp);
-            break;
-        case 3:
-            cout << "Enter product name: "; cin.getline(buffer, 50);
-            searchByName(buffer);
-            break;
-        case 4:
-            cout << "Enter manufacturer: "; cin.getline(buffer, 50);
-            searchByManufacturer(buffer);
-            break;
-        case 5:
-            cout << "Enter max price: "; cin >> price; cin.ignore();
-            searchByPrice(price);
-            break;
-        case 6:
-            cout << "Enter category: "; cin.getline(buffer, 30);
-            searchByCategory(buffer);
-            break;
-        case 7:
-            cout << "Enter arrival date: "; cin.getline(buffer, 11);
-            searchByArrivalDate(buffer);
-            break;
-        case 8:
-            cout << "Enter expiration date: "; cin.getline(buffer, 11);
-            searchByExpirationDate(buffer);
-            break;
-        case 9:
-            sortByPrice();
-            cout << "Sorted by price.\n";
-            break;
-        case 10:
-            sortByCategory();
-            cout << "Sorted by category.\n";
-            break;
-        case 11:
-            displayAllProducts();
-            break;
-        }
-
-        cout << "\nPress any key to continue...";
-        _getch();
-    }
-
-    return 0;
+	return 0;
 }
